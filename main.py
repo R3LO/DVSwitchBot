@@ -15,21 +15,68 @@ token = config.get('Settings', 'token')
 fn = config.get('Settings', 'file_json')
 wait = int(config.get('Settings', 'wait_minutes'))
 
+
+async def delete_msg_id(hours: int, channel_id: str, token: str) -> None:
+    ''' delete old message from Telegramm '''
+    url = 'https://api.telegram.org/bot'
+    url += token
+    method = url + '/deleteMessage'
+    now = datetime.now()
+    with open('msg_id.json', 'r') as f:
+        msg_id = json.load(f)
+    temp = []
+    for id in msg_id:
+        date_msg = msg_id[id]
+        date_msg = datetime.strptime(date_msg, '%Y-%m-%d %H:%M:%S')
+        now = datetime.now()
+        if now > date_msg + timedelta(hours=hours):
+            try:
+                r = requests.post(method, data={
+                    'chat_id': channel_id,
+                    'message_id': id
+                })
+                temp.append(id)
+                if r.status_code != 200:
+                    print('Delete Telegramm mmessage error\n', r.text)
+                else:
+                    print(f'Удалено сообщение id={id}')
+            except:
+                print('Telegramm delete request error')
+    for i in temp:
+        del msg_id[i]
+    with open('msg_id.json', "w") as f:
+        json.dump(msg_id, f)
+
+
 async def reg_send(msg, channel_id, token):
     '''    sent to telegrann    '''
     url = 'https://api.telegram.org/bot'
     url += token
     method = url + '/sendMessage'
-    r = requests.post(method, data={
-        'chat_id': channel_id,
-        'text': msg,
-        'parse_mode': 'MarkdownV2'
-    })
-    if r.status_code != 200:
-        print('Telegramm error')
+    try:
+        r = requests.post(method, data={
+            'chat_id': channel_id,
+            'text': msg,
+            'parse_mode': 'MarkdownV2'
+        })
+        if r.status_code != 200:
+            print('Telegramm error')
+        else:
+            with open('msg_id.json', 'r') as f:
+                msg_id_dict = json.load(f)
+            r_jsom = json.loads(r.text)
+            msg_id = r_jsom['result']['message_id']
+            now = datetime.now()
+            now = now.strftime("%Y-%m-%d %H:%M:%S")  # type str
+            msg_id_dict[msg_id] = now
+            with open('msg_id.json', 'w') as f:
+                json.dump(msg_id_dict, f, ensure_ascii=False)
+    except:
+        print('Telegram sent request error')
+
 
 def check_json(date, call, group) -> bool:
-    """    Check data from LSON    """
+    """    Check data from JSON    """
     with open(fn, "r") as f_json:
         t_dict = json.load(f_json)
     now = datetime.now()
@@ -53,6 +100,7 @@ def check_json(date, call, group) -> bool:
                 json.dump(t_dict, f_json)
             return True
     return False
+
 
 def get_spots(url: str) -> list:
     """ get spots from dashboard   """
@@ -96,6 +144,7 @@ def get_spots(url: str) -> list:
         except:
             print('Parsing error')
 
+
 def add_sign(parm: str) -> str:
     try:
         if parm == '--':
@@ -131,10 +180,10 @@ def main() -> None:
                                   + loss_sign + '*Loss*\\=' + loss + ' ' + ber_sign +'*BER*\\=' + ber)
                 print(telegram_mess)
                 asyncio.run(reg_send(telegram_mess, channel_id, token))
+        # delete old message - hours
+        asyncio.run(delete_msg_id(8, channel_id, token))
         print(now)
         time.sleep(5)
-
-
 
 
 if __name__ == "__main__":
